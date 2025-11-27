@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>204호 스마트 좌석 관리</title>
+    <style>
+        /* [1] 스타일 초기화 */
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        
+        body {
+            font-family: 'Pretendard', sans-serif;
+            background-color: #f1f3f5;
+            display: flex;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .kiosk-container {
+            width: 100%;
+            max-width: 640px;
+            height: 100%;
+            background-color: white;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden; /* 화면 전환 시 넘침 방지 */
+        }
+
+        /* ★ 시작 화면 (New) */
+        #start-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #2b3044, #1a1d29);
+            color: white;
+            z-index: 999; /* 제일 위에 표시 */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            transition: transform 0.5s ease-in-out, opacity 0.5s;
+        }
+        #start-screen.hidden {
+            transform: translateY(-100%); /* 위로 슬라이드 되며 사라짐 */
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .logo-area { margin-bottom: 50px; animation: float 3s ease-in-out infinite; }
+        .logo-icon { font-size: 5rem; margin-bottom: 10px; display: block; }
+        .app-title { font-size: 2rem; font-weight: bold; margin-bottom: 5px; letter-spacing: -1px; }
+        .app-subtitle { font-size: 1rem; color: #a5b1c2; font-weight: 300; }
+
+        .touch-area { 
+            position: absolute; bottom: 100px; width: 100%; 
+            animation: blink 2s infinite; cursor: pointer;
+        }
+        .touch-text { font-size: 1.2rem; font-weight: 500; }
+
+        @keyframes float { 0% { transform: translateY(0); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0); } }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+
+        /* 헤더 */
+        header {
+            background-color: #2b3044;
+            color: white;
+            padding: 20px;
+        }
+        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        
+        /* ★ 홈 버튼 스타일 (New) */
+        .home-btn {
+            background: rgba(255,255,255,0.15);
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.2rem;
+            margin-right: 10px;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .home-btn:active { background: rgba(255,255,255,0.3); }
+
+        .title-wrapper { display: flex; align-items: center; }
+
+        .mode-badge { 
+            font-size: 0.8rem; background: #e03131; padding: 4px 8px; 
+            border-radius: 4px; font-weight: bold; animation: pulse 1s infinite; 
+        }
+
+        /* 대시보드 */
+        .dashboard { display: flex; gap: 8px; }
+        .status-card {
+            flex: 1; background-color: #3e445b; padding: 10px 5px;
+            border-radius: 8px; text-align: center;
+        }
+        .status-label { font-size: 0.7rem; color: #ced4da; margin-bottom: 3px; }
+        .status-value { font-size: 1.1rem; font-weight: bold; }
+        .text-blue { color: #4dabf7; }
+        .text-red { color: #ff8787; }
+
+        /* 메인 영역 */
+        main { flex: 1; padding: 15px; overflow-y: auto; background-color: #f8f9fa; }
+        
+        .screen-area {
+            text-align: center;
+            background-color: #e9ecef;
+            color: #868e96;
+            padding: 8px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+
+        /* 좌석 그리드 */
+        .seat-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr) 30px repeat(2, 1fr) 30px repeat(2, 1fr);
+            gap: 8px 6px;
+            padding-bottom: 20px;
+        }
+
+        /* 좌석 스타일 */
+        .seat {
+            aspect-ratio: 1/1;
+            background-color: white;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            position: relative;
+            transition: 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+        }
+        .seat-num { font-size: 1.1rem; font-weight: bold; color: #495057; margin-bottom: 2px; }
+        .timer { font-size: 0.7rem; color: #e03131; font-weight: bold; font-family: monospace; display: none; }
+        .type-badge { font-size: 0.6rem; padding: 2px 4px; border-radius: 3px; margin-bottom: 2px; display: none; }
+        
+        /* 상태별 스타일 */
+        .seat.active { background-color: #e7f5ff; border-color: #339af0; }
+        .seat.active .seat-num { color: #1864ab; font-size: 1rem; margin-bottom: 0; }
+        .seat.active .timer { display: block; }
+        .seat.active .type-badge { display: inline-block; }
+
+        .seat.broken { background-color: #f1f3f5; border-color: #ced4da; color: #adb5bd; }
+        .seat.broken .seat-num { text-decoration: line-through; opacity: 0.5; }
+        .seat.broken::after { content: '🔧'; font-size: 1.5rem; position: absolute; }
+
+        .aisle { pointer-events: none; } 
+        .badge-major { background-color: #1971c2; color: white; }
+        .badge-general { background-color: #fcc419; color: black; }
+
+        /* 모달 스타일 */
+        .modal-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.5); display: none;
+            justify-content: center; align-items: flex-end; z-index: 100;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal-content {
+            background-color: white; width: 100%; padding: 30px 20px;
+            border-top-left-radius: 25px; border-top-right-radius: 25px;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.2);
+            animation: slideUp 0.3s ease-out;
+        }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+        /* 토스트 메시지 */
+        #toast-container {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            z-index: 200; display: flex; flex-direction: column; gap: 10px; pointer-events: none;
+            width: 90%; max-width: 400px;
+        }
+        .toast {
+            background: rgba(43, 48, 68, 0.95); color: white; padding: 14px 20px;
+            border-radius: 12px; font-size: 0.95rem; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            animation: fadeUp 0.3s forwards; display: flex; align-items: center; gap: 10px;
+        }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        .radio-group { display: flex; gap: 10px; margin: 20px 0; }
+        .radio-option {
+            flex: 1; text-align: center; border: 2px solid #dee2e6;
+            border-radius: 10px; padding: 15px; cursor: pointer;
+        }
+        .radio-option.selected { border-color: #339af0; background-color: #e7f5ff; color: #1864ab; font-weight: bold; }
+        
+        /* 버튼 스타일 */
+        .btn { width: 100%; padding: 16px; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: bold; cursor: pointer; margin-top: 8px; transition: 0.2s; }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { background: #339af0; color: white; }
+        .btn-danger { background: #ff6b6b; color: white; }
+        .btn-warning { background: #ffc078; color: #d9480f; }
+        .btn-secondary { background: #e9ecef; color: #495057; }
+        .btn-repair { background: #20c997; color: white; }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <div class="kiosk-container">
+        <!-- ★ 시작 화면 (New) -->
+        <div id="start-screen" onclick="hideStartScreen()">
+            <div class="logo-area">
+                <span class="logo-icon">🎓</span>
+                <div class="app-title">204호 스마트 좌석 배정</div>
+                <div class="app-subtitle">컴퓨터소프트웨어공학과 실습실</div>
+            </div>
+            <div class="touch-area">
+                <div class="touch-text">👆 화면을 터치하여 시작하세요</div>
+            </div>
+        </div>
+
+        <header>
+            <div class="header-top">
+                <!-- ★ 홈 버튼 추가 -->
+                <div class="title-wrapper">
+                    <button class="home-btn" onclick="showStartScreen()">🏠</button>
+                    <div style="font-size:1.2rem; font-weight:bold;">204호 좌석 배정</div>
+                </div>
+                <div class="mode-badge">⚡ 시연 모드 (1H=5s)</div>
+            </div>
+            <div class="dashboard">
+                <div class="status-card">
+                    <div class="status-label">잔여 좌석</div>
+                    <div class="status-value text-blue" id="remainSeat">36</div>
+                </div>
+                <div class="status-card">
+                    <div class="status-label">수리 필요</div>
+                    <div class="status-value text-red" id="brokenSeat">0</div>
+                </div>
+                <div class="status-card">
+                    <div class="status-label">현재 시각</div>
+                    <div class="status-value" id="clock">00:00</div>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div class="screen-area">📺 SCREEN (FRONT)</div>
+            <div class="seat-grid" id="seatGrid">
+                <!-- JS 생성 -->
+            </div>
+        </main>
+
+        <!-- 토스트 메시지 컨테이너 -->
+        <div id="toast-container"></div>
+
+        <!-- [모달 1] 입실 선택 (고장신고 버튼 제거됨) -->
+        <div id="checkInModal" class="modal-overlay">
+            <div class="modal-content">
+                <h2 style="margin-bottom:10px;">입실: 수업 유형 선택</h2>
+                <p style="color:#868e96; font-size:0.9rem;">이용하실 수업 유형을 선택해주세요.</p>
+                
+                <div class="radio-group">
+                    <div class="radio-option selected" onclick="selectType('major')" id="opt-major">
+                        전공 심화<br>
+                        <span style="font-size:0.8rem; color:#339af0;">(2시간 50분)</span>
+                    </div>
+                    <div class="radio-option" onclick="selectType('general')" id="opt-general">
+                        교양/기타<br>
+                        <span style="font-size:0.8rem; color:#e03131;">(1시간 50분)</span>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="confirmCheckIn()">입실하기</button>
+                <button class="btn btn-secondary" onclick="closeAllModals()">취소</button>
+            </div>
+        </div>
+
+        <!-- [모달 2] 퇴실 확인 (고장신고 버튼 유지) -->
+        <div id="checkOutModal" class="modal-overlay">
+            <div class="modal-content">
+                <h2 style="margin-bottom:10px; color:#e03131;">퇴실하시겠습니까?</h2>
+                <p style="color:#495057; font-size:1.1rem; margin-bottom:5px;">
+                    현재 좌석: <span id="outSeatNum" style="font-weight:bold;">0</span>번
+                </p>
+                <p style="color:#868e96; font-size:0.9rem; margin-bottom:20px;">
+                    남은 시간: <span id="outRemainTime" style="font-weight:bold; font-family:monospace;">00:00</span>
+                </p>
+                
+                <button class="btn btn-danger" onclick="confirmCheckOut()">퇴실하기 (사용 종료)</button>
+                <button class="btn btn-warning" onclick="openBrokenConfirm()">⚠ 고장 신고하기</button>
+                <button class="btn btn-secondary" onclick="closeAllModals()">계속 사용하기</button>
+            </div>
+        </div>
+
+        <!-- [모달 3] 수리(복구) 확인 -->
+        <div id="repairModal" class="modal-overlay">
+            <div class="modal-content">
+                <h2 style="margin-bottom:10px;">🛠️ 관리자 메뉴</h2>
+                <p style="color:#495057; margin-bottom:20px;">
+                    <span id="repairSeatNum" style="font-weight:bold; color:#e03131;">0</span>번 좌석의 수리가 완료되었습니까?
+                </p>
+                <button class="btn btn-repair" onclick="completeRepair()">수리 완료 (사용 가능 처리)</button>
+                <button class="btn btn-secondary" onclick="closeAllModals()">닫기</button>
+            </div>
+        </div>
+
+        <!-- [모달 4] 고장 신고 확인 -->
+        <div id="brokenConfirmModal" class="modal-overlay">
+            <div class="modal-content">
+                <h2 style="margin-bottom:10px; color:#d9480f;">⚠ 신고 확인</h2>
+                <p style="color:#495057; margin-bottom:10px;">
+                    <span id="brokenTargetNum" style="font-weight:bold;">0</span>번 좌석을 고장 신고하시겠습니까?
+                </p>
+                <p style="color:#868e96; font-size:0.85rem; margin-bottom:20px;">
+                    신고 시 해당 좌석은 '수리 필요' 상태가 되며<br>사용 및 입실이 불가능해집니다.
+                </p>
+                <button class="btn btn-danger" onclick="executeBrokenReport()">신고 확정 (사용 불가 처리)</button>
+                <button class="btn btn-secondary" onclick="closeAllModals()">취소</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // [1] 설정값
+        const TIME_MAJOR = 15;
+        const TIME_GENERAL = 7;
+        
+        // [2] 데이터 초기화
+        const totalSeats = 36;
+        let seats = [];
+        for(let i=1; i<=totalSeats; i++) {
+            seats.push({ 
+                id: i, 
+                status: 'empty', 
+                type: null, 
+                remainTime: 0
+            });
+        }
+
+        let selectedSeatId = null;
+        let selectedType = 'major';
+
+        // [3] 초기 실행
+        renderSeats();
+        setInterval(updateClock, 1000);
+        setInterval(decrementTimers, 1000);
+
+        // ★ 시작 화면 숨기기/보이기 함수
+        function hideStartScreen() {
+            document.getElementById('start-screen').classList.add('hidden');
+        }
+        function showStartScreen() {
+            document.getElementById('start-screen').classList.remove('hidden');
+        }
+
+        // [4] 타이머 로직
+        function decrementTimers() {
+            let changed = false;
+            seats.forEach(seat => {
+                if (seat.status === 'active' && seat.remainTime > 0) {
+                    seat.remainTime--;
+                    
+                    if (seat.remainTime <= 0) {
+                        seat.status = 'empty';
+                        seat.type = null;
+                        showToast(`⏰ ${seat.id}번 좌석 시간이 종료되어 자동 퇴실되었습니다.`);
+                    }
+                    changed = true;
+                }
+            });
+            
+            // 모달 시간 갱신
+            if(document.getElementById('checkOutModal').style.display === 'flex') {
+                const seat = seats.find(s => s.id === selectedSeatId);
+                if(seat && seat.status === 'active') {
+                    document.getElementById('outRemainTime').innerText = formatTime(seat.remainTime);
+                }
+            }
+            if (changed) renderSeats();
+        }
+
+        // [5] 렌더링 함수
+        function renderSeats() {
+            const grid = document.getElementById('seatGrid');
+            grid.innerHTML = '';
+            let activeCount = 0;
+            let brokenCount = 0;
+
+            seats.forEach((seat, index) => {
+                if (seat.status === 'active') activeCount++;
+                if (seat.status === 'broken') brokenCount++;
+
+                const el = document.createElement('div');
+                el.className = `seat ${seat.status}`;
+                el.onclick = () => handleSeatClick(seat.id);
+
+                let content = `<div class="seat-num">${seat.id}</div>`;
+                
+                if (seat.status === 'active') {
+                    const badgeClass = seat.type === 'major' ? 'badge-major' : 'badge-general';
+                    const badgeText = seat.type === 'major' ? '전공' : '교양';
+                    content = `
+                        <div class="type-badge ${badgeClass}">${badgeText}</div>
+                        <div class="seat-num">${seat.id}</div>
+                        <div class="timer">${formatTime(seat.remainTime)}</div>
+                    `;
+                }
+                
+                el.innerHTML = content;
+                grid.appendChild(el);
+
+                // 통로 삽입
+                const positionInRow = (index + 1) % 6;
+                if (positionInRow === 2 || positionInRow === 4) {
+                    const aisle = document.createElement('div');
+                    aisle.className = 'aisle';
+                    grid.appendChild(aisle);
+                }
+            });
+
+            document.getElementById('remainSeat').innerText = totalSeats - activeCount - brokenCount;
+            document.getElementById('brokenSeat').innerText = brokenCount;
+        }
+
+        // [6] 이벤트 핸들러
+        function handleSeatClick(id) {
+            selectedSeatId = id;
+            const seat = seats.find(s => s.id === id);
+            
+            if (seat.status === 'active') {
+                document.getElementById('outSeatNum').innerText = id;
+                document.getElementById('outRemainTime').innerText = formatTime(seat.remainTime);
+                document.getElementById('checkOutModal').classList.add('open');
+            } else if (seat.status === 'broken') {
+                document.getElementById('repairSeatNum').innerText = id;
+                document.getElementById('repairModal').classList.add('open');
+            } else {
+                selectedType = 'major';
+                updateRadioUI();
+                document.getElementById('checkInModal').classList.add('open');
+            }
+        }
+
+        function selectType(type) {
+            selectedType = type;
+            updateRadioUI();
+        }
+
+        function updateRadioUI() {
+            document.getElementById('opt-major').className = `radio-option ${selectedType === 'major' ? 'selected' : ''}`;
+            document.getElementById('opt-general').className = `radio-option ${selectedType === 'general' ? 'selected' : ''}`;
+        }
+
+        function confirmCheckIn() {
+            const seat = seats.find(s => s.id === selectedSeatId);
+            seat.status = 'active';
+            seat.type = selectedType;
+            seat.remainTime = selectedType === 'major' ? TIME_MAJOR : TIME_GENERAL;
+            
+            closeAllModals();
+            renderSeats();
+            showToast(`✅ ${selectedSeatId}번 좌석 입실 완료`);
+        }
+
+        function confirmCheckOut() {
+            const seat = seats.find(s => s.id === selectedSeatId);
+            seat.status = 'empty';
+            seat.type = null;
+            seat.remainTime = 0;
+            
+            closeAllModals();
+            renderSeats();
+            showToast(`👋 ${selectedSeatId}번 좌석 퇴실 완료`);
+        }
+
+        function openBrokenConfirm() {
+            closeAllModals(); // 기존 모달 닫기
+            document.getElementById('brokenTargetNum').innerText = selectedSeatId;
+            document.getElementById('brokenConfirmModal').classList.add('open');
+        }
+
+        function executeBrokenReport() {
+            const seat = seats.find(s => s.id === selectedSeatId);
+            seat.status = 'broken';
+            seat.type = null;
+            seat.remainTime = 0;
+            
+            closeAllModals();
+            renderSeats();
+            showToast(`⚠ ${selectedSeatId}번 좌석 고장 신고 접수됨`);
+        }
+
+        function completeRepair() {
+            const seat = seats.find(s => s.id === selectedSeatId);
+            seat.status = 'empty';
+            closeAllModals();
+            renderSeats();
+            showToast(`🔧 ${selectedSeatId}번 좌석 수리 완료!`);
+        }
+
+        function closeAllModals() {
+            document.querySelectorAll('.modal-overlay').forEach(el => el.classList.remove('open'));
+        }
+
+        function showToast(message) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.innerHTML = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(20px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock').innerText = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function formatTime(seconds) {
+            const min = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const sec = (seconds % 60).toString().padStart(2, '0');
+            return `${min}:${sec}`;
+        }
+    </script>
+</body>
+</html>
